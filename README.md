@@ -19,25 +19,13 @@ A PuTTY-like SSH client written in pure Rust, with both a **terminal-based (TUI)
 
 ## Screenshots
 
-```
-┌──────────────────────────────────────────┐
-│ Session  ⏻ Disconnect  ▶ Show  ☑ Auto… │
-├──────────┬───────────────────────────────┤
-│ Connection│  user@host:~$ htop           │
-│           │  1  [||||||||||||] 45%       │
-│ Saved:    │  2  [||||||      ] 30%       │
-│ [myhost▼] │  3  [||||||||||||] 80%       │
-│  🗑        │                               │
-│ Host:     │                               │
-│ [myhost ] │                               │
-│ Port: 22  │                               │
-│ User:     │                               │
-│ [admin  ] │                               │
-│ [Connect] │                               │
-├──────────┴───────────────────────────────┤
-│ Connected                                 │
-└──────────────────────────────────────────┘
-```
+### Login
+
+![Login form](screenshots/login.png)
+
+### Terminal with htop
+
+![htop in terminal](screenshots/htop.png)
 
 ## Building
 
