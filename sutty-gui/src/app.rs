@@ -151,10 +151,10 @@ pub struct RuttyApp {
     pub show_modify_prompt: bool,
 
     /// Send resize events to the SSH task (cols, rows).
-    resize_tx: Option<tokio::sync::mpsc::UnboundedSender<(u32, u32)>>,
+    pub(crate) resize_tx: Option<tokio::sync::mpsc::UnboundedSender<(u32, u32)>>,
 
     /// Track the last terminal viewport size to detect resize.
-    last_term_size: Option<(u16, u16)>, // (rows, cols)
+    pub(crate) last_term_size: Option<(u16, u16)>, // (rows, cols)
 
     /// Window centered yet?
     centered: bool,

@@ -323,26 +323,19 @@ fn try_connect(app: &mut RuttyApp) {
 
 /// Render the terminal view with auto-scroll and cursor padding.
 fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
-    let session = match app.session.as_ref() {
-        Some(s) => s,
-        None => {
-            ui.centered_and_justified(|ui| {
-                ui.label("Not connected.");
-            });
-            return;
-        }
-    };
+    // Check if we have a session — early return if not
+    if app.session.is_none() {
+        ui.centered_and_justified(|ui| {
+            ui.label("Not connected.");
+        });
+        return;
+    }
 
-    let rows = session.screen_rows();
-    let cols = session.cols;
     let font_id = egui::FontId::monospace(14.0);
     let row_height = ui.fonts(|f| f.row_height(&font_id));
-    let (cur_row, cur_col) = session.cursor_position();
-
-    // Measure a single character width for cell-based painting
     let char_width = ui.fonts(|f| f.glyph_width(&font_id, 'W'));
 
-    // Calculate desired scroll for cursor visibility
+    // Calculate viewport-based terminal dimensions
     let viewport_h = ui.available_height();
     let viewport_w = ui.available_width();
     let visible_rows = (viewport_h / row_height).floor().max(5.0) as u16;
@@ -350,7 +343,9 @@ fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
 
     // Detect resize and propagate to terminal + remote PTY
     let current_size = (visible_rows, visible_cols);
-    if app.last_term_size != Some(current_size) && visible_cols != cols {
+    let needs_resize = app.last_term_size != Some(current_size)
+        && app.session.as_ref().map_or(false, |s| visible_cols != s.cols);
+    if needs_resize {
         app.last_term_size = Some(current_size);
         if let Some(ref mut session) = app.session {
             session.resize(visible_rows, visible_cols);
@@ -358,23 +353,29 @@ fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
         if let Some(ref tx) = app.resize_tx {
             let _ = tx.send((visible_cols as u32, visible_rows as u32));
         }
-        // Reset auto-scroll after resize so the view snaps to cursor
         app.auto_scroll = true;
     }
+
+    // Now borrow session immutably for the rest of the function
+    let session = app.session.as_ref().unwrap();
+    let rows = session.screen_rows();
+    let cols = session.cols;
+    let (cur_row, cur_col) = session.cursor_position();
 
     // Auto-scroll: always scroll to cursor when enabled (not just on new data).
     // This handles cases like htop exiting where the terminal switches back from
     // the alternate screen without producing new network data.
     let do_scroll = app.auto_scroll;
+    let target_scroll_y = (cur_row as f32 - visible_rows as f32 * 0.35).max(0.0) * row_height;
 
     ScrollArea::both()
         .auto_shrink([false, true])
+        .id_salt("terminal")
         .show(ui, |ui| {
             if do_scroll {
-                let scroll_y = (cur_row as f32 - visible_rows as f32 * 0.35).max(0.0) * row_height;
                 ui.scroll_to_rect(
                     egui::Rect::from_min_size(
-                        egui::Pos2::new(0.0, scroll_y),
+                        egui::Pos2::new(0.0, target_scroll_y),
                         egui::Vec2::new(1.0, 1.0),
                     ),
                     Some(Align::Min),
@@ -488,6 +489,19 @@ fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
                     ui.set_height(row_height);
                     ui.label("");
                 });
+            }
+
+            // If auto-scroll is on but user scrolled away from cursor, disable it.
+            // We check this inside the ScrollArea where clip_rect reflects the actual
+            // scroll position after any manual user scrolling.
+            if app.auto_scroll {
+                let clip = ui.clip_rect();
+                let cursor_y = cur_row as f32 * row_height;
+                let cursor_visible = cursor_y + row_height > clip.min.y
+                    && cursor_y < clip.max.y;
+                if !cursor_visible && rows > visible_rows {
+                    app.auto_scroll = false;
+                }
             }
         });
 }
