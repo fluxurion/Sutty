@@ -344,7 +344,23 @@ fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
 
     // Calculate desired scroll for cursor visibility
     let viewport_h = ui.available_height();
+    let viewport_w = ui.available_width();
     let visible_rows = (viewport_h / row_height).floor().max(5.0) as u16;
+    let visible_cols = ((viewport_w - 4.0) / char_width).floor().max(1.0) as u16;
+
+    // Detect resize and propagate to terminal + remote PTY
+    let current_size = (visible_rows, visible_cols);
+    if app.last_term_size != Some(current_size) && visible_cols != cols {
+        app.last_term_size = Some(current_size);
+        if let Some(ref mut session) = app.session {
+            session.resize(visible_rows, visible_cols);
+        }
+        if let Some(ref tx) = app.resize_tx {
+            let _ = tx.send((visible_cols as u32, visible_rows as u32));
+        }
+        // Reset auto-scroll after resize so the view snaps to cursor
+        app.auto_scroll = true;
+    }
 
     // Auto-scroll: always scroll to cursor when enabled (not just on new data).
     // This handles cases like htop exiting where the terminal switches back from
