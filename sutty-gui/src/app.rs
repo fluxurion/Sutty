@@ -61,6 +61,13 @@ impl TermSession {
     pub fn screen_rows(&self) -> u16 {
         self.screen.size().0
     }
+
+    /// Resize the terminal emulator to new dimensions.
+    pub fn resize(&mut self, rows: u16, cols: u16) {
+        self.parser.set_size(rows, cols);
+        self.screen = self.parser.screen().clone();
+        self.cols = cols;
+    }
 }
 
 /// Connection form state.
