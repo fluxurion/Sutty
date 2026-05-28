@@ -150,6 +150,12 @@ pub struct RuttyApp {
     /// Prompt: "Login data changed, save?"
     pub show_modify_prompt: bool,
 
+    /// Send resize events to the SSH task (cols, rows).
+    resize_tx: Option<tokio::sync::mpsc::UnboundedSender<(u32, u32)>>,
+
+    /// Track the last terminal viewport size to detect resize.
+    last_term_size: Option<(u16, u16)>, // (rows, cols)
+
     /// Window centered yet?
     centered: bool,
 }
@@ -187,6 +193,8 @@ impl RuttyApp {
             selected_session: String::new(),
             loaded_snapshot: None,
             show_modify_prompt: false,
+            resize_tx: None,
+            last_term_size: None,
             centered: false,
         };
 
@@ -303,8 +311,10 @@ impl RuttyApp {
 
         let (write_tx, mut write_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
         let (read_tx, read_rx) = tokio::sync::mpsc::unbounded_channel::<SshEvent>();
+        let (resize_tx, mut resize_rx) = tokio::sync::mpsc::unbounded_channel::<(u32, u32)>();
 
         self.read_rx = Some(read_rx);
+        self.resize_tx = Some(resize_tx);
 
         let term_rows: u16 = 30;
         let term_cols: u16 = 100;
@@ -340,6 +350,13 @@ impl RuttyApp {
                             None => break,
                         }
                     }
+                    maybe_resize = resize_rx.recv() => {
+                        if let Some((cols, rows)) = maybe_resize {
+                            let _ = ssh.resize_pty(cols, rows).await;
+                        } else {
+                            break;
+                        }
+                    }
                     maybe_event = ssh.receive() => {
                         match maybe_event {
                             Some(event) => {
@@ -361,6 +378,8 @@ impl RuttyApp {
     pub fn disconnect(&mut self) {
         self.session = None;
         self.read_rx = None;
+        self.resize_tx = None;
+        self.last_term_size = None;
         self.pending_data.clear();
         self.saved_conn = None;
         self.conn_state = ConnState::Disconnected;
