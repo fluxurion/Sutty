@@ -1,0 +1,3 @@
+[workspace]
+members = ["sutty", "sutty-core", "sutty-gui"]
+resolver = "2"

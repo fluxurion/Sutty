@@ -1,0 +1,16 @@
+[package]
+name = "sutty"
+version = "0.1.0"
+edition = "2021"
+description = "Sutty TUI SSH client"
+
+[dependencies]
+sutty-core = { path = "../sutty-core" }
+ratatui = "0.28"
+crossterm = "0.28"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+whoami = "1"
