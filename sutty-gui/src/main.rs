@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod icon;
 mod ui;
 
 use app::RuttyApp;
@@ -25,12 +26,20 @@ fn main() {
 
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
+    let icon_data = icon::load_icon(include_bytes!("../icon.ico"));
+
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([860.0, 520.0])
+        .with_title("Sutty — SSH Client")
+        .with_resizable(true)
+        .with_decorations(true);
+
+    if let Some(icon) = icon_data {
+        viewport = viewport.with_icon(std::sync::Arc::new(icon));
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([860.0, 520.0])
-            .with_title("Sutty — SSH Client")
-            .with_resizable(true)
-            .with_decorations(true),
+        viewport,
         ..Default::default()
     };
 
