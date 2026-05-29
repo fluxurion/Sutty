@@ -169,7 +169,11 @@ pub fn render(app: &mut RuttyApp, ctx: &egui::Context) {
             });
         });
 
+    // Forward remaining keyboard events (not consumed by widgets) to the terminal.
+    // This runs AFTER all widgets, so events consumed by egui (copy, text input) are
+    // already gone. Only unhandled events reach the remote host.
     handle_keyboard_input(app, ctx);
+
     if app.should_close {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
@@ -344,7 +348,10 @@ fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
     // Detect resize and propagate to terminal + remote PTY
     let current_size = (visible_rows, visible_cols);
     let needs_resize = app.last_term_size != Some(current_size)
-        && app.session.as_ref().map_or(false, |s| visible_cols != s.cols);
+        && app
+            .session
+            .as_ref()
+            .map_or(false, |s| visible_cols != s.cols);
     if needs_resize {
         app.last_term_size = Some(current_size);
         if let Some(ref mut session) = app.session {
@@ -497,8 +504,7 @@ fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
             if app.auto_scroll {
                 let clip = ui.clip_rect();
                 let cursor_y = cur_row as f32 * row_height;
-                let cursor_visible = cursor_y + row_height > clip.min.y
-                    && cursor_y < clip.max.y;
+                let cursor_visible = cursor_y + row_height > clip.min.y && cursor_y < clip.max.y;
                 if !cursor_visible && rows > visible_rows {
                     app.auto_scroll = false;
                 }
@@ -506,34 +512,54 @@ fn render_terminal(app: &mut RuttyApp, ui: &mut egui::Ui) {
         });
 }
 
-/// Handle keyboard input.
+/// Forward unhandled keyboard/paste events to the SSH session.
+/// Called at the END of `render()` — only events that no egui widget consumed remain.
+/// This means copy (Ctrl+C with selection), text-edit input, etc. are already handled.
 fn handle_keyboard_input(app: &RuttyApp, ctx: &egui::Context) {
-    // Only forward keys when fully connected (not during connecting phase)
-    if app.conn_state == ConnState::Connected {
-        ctx.input_mut(|i| {
-            while let Some(event) = i.events.pop() {
-                match event {
-                    egui::Event::Key {
-                        key,
-                        pressed: true,
-                        modifiers,
-                        ..
-                    } => {
-                        let bytes = key_to_ssh_bytes(key, modifiers);
-                        if !bytes.is_empty() {
-                            app.send_keys(bytes);
-                        }
-                    }
-                    egui::Event::Text(text) => {
-                        if !text.is_empty() && !text.starts_with('\u{1b}') {
-                            app.send_keys(text.as_bytes().to_vec());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        });
+    if app.conn_state != ConnState::Connected {
+        return;
     }
+    // If a text-input widget is focused (connection form, save prompt), don't forward.
+    if ctx.wants_keyboard_input() {
+        return;
+    }
+
+    let mut skip_next_text = false;
+    ctx.input_mut(|i| {
+        while let Some(event) = i.events.pop() {
+            match event {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } => {
+                    let bytes = key_to_ssh_bytes(key, modifiers);
+                    if !bytes.is_empty() {
+                        app.send_keys(bytes);
+                        // Ctrl/Alt combos also produce a follow-up Event::Text — skip it.
+                        skip_next_text = modifiers.ctrl || modifiers.alt;
+                    }
+                }
+                egui::Event::Text(text) => {
+                    if skip_next_text {
+                        skip_next_text = false;
+                    } else if !text.is_empty()
+                        && !text.starts_with('\u{1b}')
+                        && !text.chars().all(|c| c.is_ascii_control())
+                    {
+                        app.send_keys(text.as_bytes().to_vec());
+                    }
+                }
+                egui::Event::Paste(text) => {
+                    if !text.is_empty() {
+                        app.send_keys(text.as_bytes().to_vec());
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
 }
 
 fn key_to_ssh_bytes(key: Key, mods: Modifiers) -> Vec<u8> {

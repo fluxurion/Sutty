@@ -573,6 +573,12 @@ impl eframe::App for RuttyApp {
             }
         }
 
+        // Disconnect cleanly when the user closes the window (X button)
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.disconnect();
+            self.should_close = true;
+        }
+
         let dt = ctx.input(|i| i.unstable_dt) as f64;
         self.tick(dt);
 
